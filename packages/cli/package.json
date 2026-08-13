@@ -1,0 +1,20 @@
+{
+  "name": "@nexus/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "First-party `nexus` CLI — scripting against the platform's real REST APIs (distinct from the raw public API itself; see docs/FEATURES.md §11.9).",
+  "bin": {
+    "nexus": "./dist/index.js"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && chmod +x dist/index.js",
+    "start": "node -r ts-node/register/transpile-only src/index.ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  }
+}

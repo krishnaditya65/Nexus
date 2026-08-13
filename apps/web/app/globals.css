@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Visible focus rings on every interactive element, never suppressed —
+   docs/FRONTEND_STANDARDS.md's accessibility rule, enforced globally here
+   rather than per-component so nothing can silently opt out of it. */
+:focus-visible {
+  outline: 2px solid theme('colors.accent');
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body {
+  background-color: theme('colors.surface');
+  color: theme('colors.text-primary');
+}
