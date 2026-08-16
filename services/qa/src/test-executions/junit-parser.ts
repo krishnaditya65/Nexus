@@ -27,7 +27,8 @@ export function parseJUnitXml(xml: string): JUnitCaseResult[] {
     const caseList = Array.isArray(cases) ? cases : [cases].filter(Boolean);
     for (const testCase of caseList) {
       const name = testCase['@_name'] ?? 'unnamed test';
-      const durationMs = Math.round(Number(testCase['@_time'] ?? 0) * 1000);
+      const rawDurationMs = Math.round(Number(testCase['@_time'] ?? 0) * 1000);
+      const durationMs = Number.isFinite(rawDurationMs) ? rawDurationMs : 0;
       if (testCase.failure !== undefined) {
         const failure = Array.isArray(testCase.failure) ? testCase.failure[0] : testCase.failure;
         results.push({

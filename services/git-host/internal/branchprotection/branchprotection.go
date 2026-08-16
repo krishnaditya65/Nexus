@@ -6,6 +6,7 @@ package branchprotection
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"path/filepath"
 
 	"github.com/nexus/git-host/internal/db"
@@ -102,7 +103,15 @@ func FindApplicable(ctx context.Context, tenantID, repoName, targetBranch string
 
 	var best *Rule
 	for i := range rules {
-		if matched, _ := filepath.Match(rules[i].BranchPattern, targetBranch); matched {
+		matched, err := filepath.Match(rules[i].BranchPattern, targetBranch)
+		if err != nil {
+			// Treat the malformed rule as non-matching (fail closed on this
+			// rule alone) but surface the error rather than silently
+			// swallowing it, so a bad pattern gets fixed instead of quietly
+			// never applying.
+			return nil, fmt.Errorf("branch protection rule %q has invalid branch pattern %q: %w", rules[i].ID, rules[i].BranchPattern, err)
+		}
+		if matched {
 			if best == nil || len(rules[i].BranchPattern) > len(best.BranchPattern) {
 				best = &rules[i]
 			}

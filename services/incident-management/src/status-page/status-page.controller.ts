@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { StatusPageService } from './status-page.service';
+import { verifyTenantSlug } from '../common/verify-tenant-slug';
 
 @Controller()
 export class StatusPageController {
@@ -8,7 +9,8 @@ export class StatusPageController {
 
   @UseGuards(JwtAuthGuard)
   @Post('status-components')
-  upsert(@Req() req: any, @Body() body: { tenantSlug: string; name: string; status: string }) {
+  async upsert(@Req() req: any, @Body() body: { tenantSlug: string; name: string; status: string }) {
+    await verifyTenantSlug(req.user.tenant_id, body.tenantSlug);
     return this.statusPage.upsertComponent(req.user.tenant_id, body.tenantSlug, body.name, body.status);
   }
 

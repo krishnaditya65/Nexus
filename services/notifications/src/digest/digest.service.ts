@@ -52,7 +52,11 @@ export class DigestService {
 
     for (const row of due) {
       try {
-        const deliveries = await withTenant(row.tenant_id, async (client) => {
+        // Fetch and (if anything was sent) advance the cursor inside the
+        // SAME withTenant transaction — a separate second call would leave
+        // a window where deliveries created between the two calls are
+        // silently skipped forever.
+        const { deliveries } = await withTenant(row.tenant_id, async (client) => {
           const { rows } = await client.query(
             `select title, body, category, created_at
              from notification_deliveries
@@ -62,12 +66,25 @@ export class DigestService {
              limit 50`,
             [row.tenant_id, row.user_id, row.last_sent_at],
           );
-          return rows.map((r) => ({
+          const mapped = rows.map((r) => ({
             title: r.title as string,
             body: r.body as string,
             category: r.category as string,
             createdAt: (r.created_at as Date).toISOString(),
           }));
+          // The cursor must advance only to the newest row actually fetched
+          // — never to now() — so anything beyond this 50-row page, or
+          // created after the fetch, stays eligible for the next run.
+          const newestCreatedAt = rows.length > 0 ? (rows[0].created_at as Date) : null;
+
+          if (newestCreatedAt) {
+            await client.query(
+              `update user_digest_settings set last_sent_at = $3 where tenant_id = $1 and user_id = $2`,
+              [row.tenant_id, row.user_id, newestCreatedAt],
+            );
+          }
+
+          return { deliveries: mapped };
         });
 
         if (!shouldSendDigest(deliveries)) {
@@ -77,13 +94,6 @@ export class DigestService {
 
         const { subject, body } = buildDigestEmail(row.frequency as DigestFrequency, deliveries);
         await this.email.sendToUser(row.tenant_id, row.user_id, subject, body);
-
-        await withTenant(row.tenant_id, (client) =>
-          client.query(`update user_digest_settings set last_sent_at = now() where tenant_id = $1 and user_id = $2`, [
-            row.tenant_id,
-            row.user_id,
-          ]),
-        );
         sent++;
       } catch (err: any) {
         // One user's misconfigured/failed digest never blocks the rest

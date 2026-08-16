@@ -1,6 +1,48 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { resolveMasterKey, encryptSecret, decryptSecret } from '@nexus/kms';
 import { pool, withTenant } from '../db/pool';
+
+// SSRF guard for `endpointUrl` (§11.1) — this value is later `fetch()`'d
+// carrying the tenant's decrypted SIEM auth token (see deliverAndStamp), so
+// an unvalidated URL is both an SSRF and a secret-exfiltration primitive:
+// an attacker configuring `endpointUrl: http://169.254.169.254/...` would
+// have this service hand its own cloud-metadata endpoint (or any other
+// internal service) a bearer token. No existing URL-validation helper
+// elsewhere in this codebase — hand-rolled here with Node's built-in URL.
+//
+// This is a literal-hostname check only: it rejects the obvious
+// loopback/link-local/private-IP literals a caller could type directly.
+// It does NOT resolve hostnames at request time, so a DNS-rebinding attack
+// (a hostname that resolves to a public IP at config time but a private
+// one at fetch time) is not covered — that needs resolution-time
+// enforcement (e.g. an egress network policy / DNS-pinning fetch agent),
+// which is out of scope for this fix.
+const PRIVATE_HOSTNAME_PATTERNS: RegExp[] = [
+  /^localhost$/i,
+  /^0\.0\.0\.0$/,
+  /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/, // loopback
+  /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/, // RFC1918
+  /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/, // RFC1918
+  /^192\.168\.\d{1,3}\.\d{1,3}$/, // RFC1918
+  /^169\.254\.\d{1,3}\.\d{1,3}$/, // link-local, incl. 169.254.169.254 cloud metadata
+  /^\[?::1\]?$/, // IPv6 loopback
+];
+
+function assertSafeEndpointUrl(endpointUrl: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(endpointUrl);
+  } catch {
+    throw new BadRequestException('endpointUrl must be a valid absolute URL');
+  }
+  if (parsed.protocol !== 'https:') {
+    throw new BadRequestException('endpointUrl must use https:');
+  }
+  const hostname = parsed.hostname;
+  if (PRIVATE_HOSTNAME_PATTERNS.some((pattern) => pattern.test(hostname))) {
+    throw new BadRequestException('endpointUrl may not point at a loopback, link-local, or private-network host');
+  }
+}
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL ?? 'http://localhost:4001';
 const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET ?? 'dev-only-internal-secret';
@@ -19,6 +61,7 @@ export class SiemExportService {
     endpointUrl: string,
     authToken: string,
   ) {
+    assertSafeEndpointUrl(endpointUrl);
     return withTenant(tenantId, async (client) => {
       const { rows } = await client.query(
         `insert into siem_export_configs (tenant_id, destination, endpoint_url, auth_token_encrypted)

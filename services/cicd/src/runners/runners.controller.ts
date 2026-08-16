@@ -54,6 +54,13 @@ export class RunnersController {
     @Param('jobId') jobId: string,
     @Body() body: { status: 'succeeded' | 'failed'; log: string; exitCode: number },
   ) {
-    return this.runners.completeJob(req.runner.tenantId, jobId, body.status, body.log ?? '', body.exitCode ?? 1);
+    return this.runners.completeJob(
+      req.runner.tenantId,
+      req.runner.runnerId,
+      jobId,
+      body.status,
+      body.log ?? '',
+      body.exitCode ?? 1,
+    );
   }
 }

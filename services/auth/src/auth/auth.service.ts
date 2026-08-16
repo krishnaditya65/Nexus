@@ -274,7 +274,12 @@ export class AuthService {
    *  session here does not instantly invalidate that token against them —
    *  documented, not silently overclaimed; see the sessions migration's
    *  docblock. */
-  private async issueToken(
+  // Public so other trusted callers that mint a real, ordinary access
+  // token — e.g. FederationInternalController's SSO/SCIM upsert-user path —
+  // go through the exact same session-row + is_guest + permissions claim
+  // set as a normal login, rather than hand-rolling a second, drifted
+  // jwt.sign() call with a reduced claim set.
+  async issueToken(
     user: { id: string; tenant_id: string; role: string; email: string; is_guest?: boolean; custom_role_id?: string | null },
     ip: string | null,
     userAgent: string | null,

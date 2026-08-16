@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { withTenant } from '../db/pool';
 
 /** Usage-metric line items billed per unit above what a seat license
@@ -42,6 +42,18 @@ export class InvoicingService {
         throw new BadRequestException('tenant has no active subscription to invoice');
       }
 
+      const existing = await client.query(
+        `select * from invoices where tenant_id = $1 and period_start = $2 and period_end = $3`,
+        [tenantId, periodStart, periodEnd],
+      );
+      if (existing.rows[0]) {
+        // Regenerating an invoice for an already-invoiced period is a
+        // no-op returning the existing invoice, not a duplicate charge —
+        // matches the idempotency discipline used in
+        // ContractorInvoicesService.create.
+        return { ...existing.rows[0], alreadyExisted: true };
+      }
+
       const lineItems: Array<{ description: string; amountCents: number }> = [
         seatLineItem(subscription.plan_name, subscription.seat_price_cents, subscription.seat_count),
       ];
@@ -82,10 +94,15 @@ export class InvoicingService {
   async markPaid(tenantId: string, invoiceId: string) {
     return withTenant(tenantId, async (client) => {
       const { rows } = await client.query(
-        `update invoices set status = 'paid' where id = $1 returning *`,
+        `update invoices set status = 'paid' where id = $1 and status not in ('void', 'paid') returning *`,
         [invoiceId],
       );
-      return rows[0] ?? null;
+      if (!rows[0]) {
+        const { rows: existing } = await client.query(`select status from invoices where id = $1`, [invoiceId]);
+        if (!existing[0]) throw new BadRequestException('invoice not found');
+        throw new ConflictException(`invoice is '${existing[0].status}' and cannot be marked paid`);
+      }
+      return rows[0];
     });
   }
 }

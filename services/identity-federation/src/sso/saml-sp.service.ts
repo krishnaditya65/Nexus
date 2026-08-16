@@ -97,7 +97,13 @@ export class SamlSpService {
 
     const extract = parsed.extract ?? {};
     const nameId: string | undefined = extract.nameID;
-    const assertionId: string | undefined = extract.response?.id ?? extract.audience ?? undefined;
+    // Do NOT fall back to extract.audience here — it's the SP's own entity
+    // ID, constant for every assertion issued to this tenant, not a
+    // per-login value. Using it as an assertion id would mark it "used" on
+    // the very first login and permanently lock out every subsequent SSO
+    // login for the tenant. Leave it undefined so resolveEffectiveAssertionId
+    // below builds a genuinely per-login synthetic id instead.
+    const assertionId: string | undefined = extract.response?.id;
     if (!nameId) {
       throw new UnauthorizedException('SAML assertion missing NameID');
     }

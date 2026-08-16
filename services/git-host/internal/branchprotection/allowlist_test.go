@@ -61,7 +61,10 @@ func TestIsUserAllowedAmong(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := isUserAllowedAmong(c.entries, c.branch, c.userID)
+			got, err := isUserAllowedAmong(c.entries, c.branch, c.userID)
+			if err != nil {
+				t.Fatalf("isUserAllowedAmong() error = %v", err)
+			}
 			if got != c.want {
 				t.Errorf("isUserAllowedAmong() = %v, want %v", got, c.want)
 			}

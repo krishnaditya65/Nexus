@@ -210,6 +210,21 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     @ConnectedSocket() socket: Socket,
     @MessageBody() body: { targetSocketId: string; signal: unknown },
   ) {
+    // Never relay to an arbitrary client-supplied socket id — reuse the
+    // same `call:<tenantId>:<callId>` room membership handleCallJoin
+    // established: the sender must currently be in a call room, and the
+    // target socket must be in that SAME room, or this is either a stale
+    // peer id or an attempt to signal a socket outside the sender's call.
+    const room = [...socket.rooms].find((r) => r.startsWith('call:'));
+    if (!room) {
+      socket.emit('error', { message: 'not currently in a call' });
+      return;
+    }
+    const targetSocket = this.server.sockets.sockets.get(body.targetSocketId);
+    if (!targetSocket || !targetSocket.rooms.has(room)) {
+      socket.emit('error', { message: 'signal target is not a peer in this call' });
+      return;
+    }
     this.server.to(body.targetSocketId).emit('call:signal', { fromSocketId: socket.id, signal: body.signal });
   }
 }

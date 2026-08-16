@@ -46,9 +46,20 @@ func OwnersFor(rules []Rule, changedFiles []string) []string {
 	for _, file := range changedFiles {
 		var matched *Rule
 		for i := range rules {
-			if strings.HasPrefix(file, rules[i].PathPrefix) {
-				matched = &rules[i] // later rules override — last match wins
+			prefix := rules[i].PathPrefix
+			if !strings.HasPrefix(file, prefix) {
+				continue
 			}
+			// Require the match to land on a full path segment boundary —
+			// "docs" must not also match "docs-legacy/..." or
+			// "docs_internal.go". PathPrefix is stored without its leading
+			// "/" (see Parse above), so "" is the repo-root catch-all
+			// (always a boundary); otherwise an exact prefix match or one
+			// immediately followed by "/" both count as boundaries.
+			if prefix != "" && len(file) != len(prefix) && !strings.HasSuffix(prefix, "/") && file[len(prefix)] != '/' {
+				continue
+			}
+			matched = &rules[i] // later rules override — last match wins
 		}
 		if matched == nil {
 			continue

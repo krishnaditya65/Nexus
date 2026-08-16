@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import Redis from 'ioredis';
 import { withTenant } from '../db/pool';
 import { ChannelsService } from '../channels/channels.service';
@@ -11,6 +11,14 @@ export { reactionsAggSql, chatRedisChannel };
  *  connections (see chat.gateway.ts, which needs a *separate* connection
  *  because a subscribed connection can only issue subscribe/unsubscribe). */
 const redisPublisher = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
+
+// No insecure fallback — see retention-internal.controller.ts and
+// calls.service.ts's identical fix. Fail closed at startup instead of
+// silently authenticating internal calls with a hardcoded string.
+if (!process.env.INTERNAL_SERVICE_SECRET) {
+  throw new Error('INTERNAL_SERVICE_SECRET must be set');
+}
+const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET;
 
 @Injectable()
 export class MessagesService {
@@ -73,7 +81,7 @@ export class MessagesService {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-internal-secret': process.env.INTERNAL_SERVICE_SECRET ?? 'dev-only-internal-secret',
+        'x-internal-secret': INTERNAL_SECRET,
       },
       body: JSON.stringify({ tenantId, sourceType: 'chat_message', sourceId: message.id, content: message.body }),
     });
@@ -103,7 +111,7 @@ export class MessagesService {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
-            'x-internal-secret': process.env.INTERNAL_SERVICE_SECRET ?? 'dev-only-internal-secret',
+            'x-internal-secret': INTERNAL_SECRET,
           },
           body: JSON.stringify({
             tenantId,
@@ -190,7 +198,7 @@ export class MessagesService {
   async addReaction(tenantId: string, channelId: string, messageId: string, userId: string, emoji: string) {
     const isMember = await this.channels.isMember(tenantId, channelId, userId);
     if (!isMember) throw new ForbiddenException('not a member of this channel');
-    if (!emoji.trim()) throw new ForbiddenException('emoji is required');
+    if (typeof emoji !== 'string' || !emoji.trim()) throw new BadRequestException('emoji is required');
 
     return withTenant(tenantId, async (client) => {
       await client.query(

@@ -2,13 +2,15 @@ import {
   Body,
   Controller,
   ForbiddenException,
+  Get,
   Headers,
+  Param,
   Post,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
 import { randomBytes } from 'crypto';
 import { TenantsService } from '../tenants/tenants.service';
 import { UsersService } from '../users/users.service';
+import { AuthService } from '../auth/auth.service';
 
 /**
  * Internal, service-to-service surface consumed by services/identity-federation
@@ -19,7 +21,7 @@ import { UsersService } from '../users/users.service';
 @Controller('internal/federation')
 export class FederationInternalController {
   constructor(
-    private readonly jwt: JwtService,
+    private readonly auth: AuthService,
     private readonly tenants: TenantsService,
     private readonly users: UsersService,
   ) {}
@@ -69,12 +71,32 @@ export class FederationInternalController {
       };
     }
 
-    const accessToken = this.jwt.sign(
-      { sub: user.id, tenant_id: tenant.id, role: user.role, email: user.email },
-      { expiresIn: '1h' },
-    );
+    // Same AuthService.issueToken every normal login goes through — real
+    // session row + sid claim, is_guest, and permissions all included, so
+    // an SSO/SCIM-provisioned caller's token behaves identically to one
+    // from the ordinary login flow instead of breaking downstream
+    // `payload.permissions.includes(...)` checks (no clientIp/userAgent to
+    // attribute the session to here — this is a service-to-service call).
+    const accessToken = await this.auth.issueToken(user, null, null);
 
     return { userId: user.id, tenantId: tenant.id, accessToken };
+  }
+
+  /**
+   * Resolves a tenant's canonical slug from its id. Used by other services
+   * to verify a client-supplied `tenantSlug` in a request body actually
+   * belongs to the authenticated caller's own tenant (from the verified
+   * JWT's `tenant_id`) before using that slug to key anything looked up by
+   * slug alone (pre-login SSO connections, SCIM tokens, public status
+   * pages) — a client-supplied slug must never be trusted on its own for
+   * that.
+   */
+  @Get('tenant/:id')
+  async getTenantById(@Headers('x-internal-secret') secret: string | undefined, @Param('id') id: string) {
+    this.assertTrustedCaller(secret);
+    const tenant = await this.tenants.findById(id);
+    if (!tenant) throw new ForbiddenException('unknown tenant');
+    return { id: tenant.id, slug: tenant.slug, name: tenant.name };
   }
 
   @Post('deprovision-user')

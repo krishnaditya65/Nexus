@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { withTenant } from '../db/pool';
 import { RateCardsService } from '../budgets/rate-cards.service';
 
@@ -68,6 +68,14 @@ export class TimeTrackingService {
 
   async approveTimesheet(tenantId: string, timesheetId: string, approverUserId: string) {
     return withTenant(tenantId, async (client) => {
+      const { rows: existing } = await client.query(`select * from timesheets where id = $1`, [timesheetId]);
+      const timesheet = existing[0] ?? null;
+      if (!timesheet) return null;
+      // Self-approval would defeat the entire point of an approval step —
+      // a submitter can't be their own approver.
+      if (timesheet.user_id === approverUserId) {
+        throw new ForbiddenException('You cannot approve your own timesheet');
+      }
       const { rows } = await client.query(
         `update timesheets set status = 'approved', approved_by_user_id = $2, approved_at = now()
          where id = $1 returning *`,
@@ -79,6 +87,12 @@ export class TimeTrackingService {
 
   async rejectTimesheet(tenantId: string, timesheetId: string, approverUserId: string) {
     return withTenant(tenantId, async (client) => {
+      const { rows: existing } = await client.query(`select * from timesheets where id = $1`, [timesheetId]);
+      const timesheet = existing[0] ?? null;
+      if (!timesheet) return null;
+      if (timesheet.user_id === approverUserId) {
+        throw new ForbiddenException('You cannot reject your own timesheet');
+      }
       const { rows } = await client.query(
         `update timesheets set status = 'rejected', approved_by_user_id = $2, approved_at = now()
          where id = $1 returning *`,

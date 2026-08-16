@@ -1,6 +1,7 @@
 import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SsoConnectionsService } from './sso-connections.service';
+import { verifyTenantSlug } from '../common/verify-tenant-slug';
 
 /** Admin configuration surface — a tenant admin wires up their IdP (Okta,
  *  Entra ID, Google Workspace) here. JWT-guarded like any other admin route. */
@@ -21,6 +22,7 @@ export class SsoConnectionsController {
       clientSecret: string;
     },
   ) {
+    await verifyTenantSlug(req.user.tenant_id, body.tenantSlug);
     return this.connections.upsertOidc({
       tenantId: req.user.tenant_id,
       tenantSlug: body.tenantSlug,
@@ -42,6 +44,7 @@ export class SsoConnectionsController {
       spEntityId?: string;
     },
   ) {
+    await verifyTenantSlug(req.user.tenant_id, body.tenantSlug);
     return this.connections.upsertSaml({
       tenantId: req.user.tenant_id,
       tenantSlug: body.tenantSlug,

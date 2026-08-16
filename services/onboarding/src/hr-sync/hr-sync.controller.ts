@@ -27,14 +27,36 @@ export class HrSyncController {
   ) {
     const { tenantId, tenantSlug } = req.hrTenant;
 
-    const eventRecord = await withTenant(tenantId, async (client) => {
+    const { eventRecord, alreadyProcessed } = await withTenant(tenantId, async (client) => {
+      // Idempotency guard: a retried webhook for the same
+      // (tenant, source, external employee, event type) that we've already
+      // finished processing must not spin up a second onboarding/
+      // offboarding workflow. Select-then-insert within this same
+      // transaction rather than a unique constraint, since 'updated'
+      // events for the same employee are legitimately repeated.
+      const existing = await client.query(
+        `select * from hr_sync_events
+         where tenant_id = $1 and source = $2 and event_type = $3 and external_employee_id = $4
+           and processed_at is not null
+         order by received_at desc
+         limit 1`,
+        [tenantId, source, payload.eventType, payload.externalEmployeeId],
+      );
+      if (existing.rows[0]) {
+        return { eventRecord: existing.rows[0], alreadyProcessed: true };
+      }
+
       const { rows } = await client.query(
         `insert into hr_sync_events (tenant_id, source, event_type, external_employee_id, raw_payload)
          values ($1, $2, $3, $4, $5) returning *`,
         [tenantId, source, payload.eventType, payload.externalEmployeeId, JSON.stringify(payload)],
       );
-      return rows[0];
+      return { eventRecord: rows[0], alreadyProcessed: false };
     });
+
+    if (alreadyProcessed) {
+      return { status: 'already_processed', eventType: payload.eventType };
+    }
 
     if (payload.eventType === 'hired') {
       const { workflow, taskIdByType } = await this.workflows.startOnboarding(

@@ -24,7 +24,7 @@ export class ChannelsController {
 
   @Post(':id/members')
   addMember(@Req() req: any, @Param('id') id: string, @Body() body: { userId: string }) {
-    return this.channels.addMember(req.user.tenant_id, id, body.userId);
+    return this.channels.addMember(req.user.tenant_id, id, body.userId, req.user.sub);
   }
 
   /** Member user ids only (no display names — those live in services/auth;

@@ -34,7 +34,7 @@ export function parseAxeResults(json: string): AxeAuditResult {
 
   const countsByImpact = { critical: 0, serious: 0, moderate: 0, minor: 0 };
   for (const v of violations) {
-    if (v.impact && v.impact in countsByImpact) {
+    if (v.impact && Object.prototype.hasOwnProperty.call(countsByImpact, v.impact)) {
       countsByImpact[v.impact as keyof typeof countsByImpact] += 1;
     }
   }

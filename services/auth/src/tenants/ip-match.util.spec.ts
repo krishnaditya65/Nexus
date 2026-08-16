@@ -54,8 +54,18 @@ describe('matchesAny', () => {
   });
 
   describe('IPv6 handling', () => {
-    it('fails open on a genuine IPv6 address (deliberate — see matchesAny docblock)', () => {
-      expect(matchesAny('2001:db8::1', ['10.0.0.0/8'])).toBe(true);
+    it('denies a genuine IPv6 address against an IPv4-only allowlist (no blanket allow)', () => {
+      expect(matchesAny('2001:db8::1', ['10.0.0.0/8'])).toBe(false);
+    });
+
+    it('matches a genuine IPv6 address against an IPv6 CIDR entry', () => {
+      expect(matchesAny('2001:db8::1', ['2001:db8::/32'])).toBe(true);
+      expect(matchesAny('2001:db9::1', ['2001:db8::/32'])).toBe(false);
+    });
+
+    it('matches a genuine IPv6 address against an exact IPv6 entry', () => {
+      expect(matchesAny('2001:db8::1', ['2001:db8::1'])).toBe(true);
+      expect(matchesAny('2001:db8::2', ['2001:db8::1'])).toBe(false);
     });
 
     // Regression test for a real bug caught live this session: Node/Express

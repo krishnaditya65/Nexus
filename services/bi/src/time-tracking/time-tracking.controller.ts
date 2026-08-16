@@ -1,5 +1,7 @@
 import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/permissions.guard';
+import { RequiresPermission } from '../auth/permissions.decorator';
 import { TimeTrackingService } from './time-tracking.service';
 
 @UseGuards(JwtAuthGuard)
@@ -40,6 +42,11 @@ export class TimeTrackingController {
     return this.timeTracking.rejectTimesheet(req.user.tenant_id, id, req.user.sub);
   }
 
+  // Contractor invoicing bakes in the same rate-card (salary-adjacent) data
+  // budgets.controller.ts gates behind `budget.edit` — gated identically
+  // here rather than left reachable by any authenticated tenant member.
+  @UseGuards(PermissionsGuard)
+  @RequiresPermission('budget.edit')
   @Post('timesheets/:id/generate-invoice')
   generateInvoice(@Req() req: any, @Param('id') id: string, @Body() body: { clientName?: string }) {
     return this.timeTracking.generateContractorInvoice(

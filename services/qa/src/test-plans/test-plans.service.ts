@@ -40,7 +40,7 @@ export class TestPlansService {
 
   private async fetchRelease(releaseId: string, authorizationHeader: string): Promise<PmRelease> {
     const pmServiceUrl = process.env.PM_SERVICE_URL ?? 'http://localhost:4002';
-    const res = await fetch(`${pmServiceUrl}/releases/${releaseId}`, {
+    const res = await fetch(`${pmServiceUrl}/releases/${encodeURIComponent(releaseId)}`, {
       headers: { authorization: authorizationHeader },
     });
     if (res.status === 404) throw new BadRequestException(`releaseRef '${releaseId}' does not name a real release`);

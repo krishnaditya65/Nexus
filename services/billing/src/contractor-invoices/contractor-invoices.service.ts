@@ -1,5 +1,15 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { withTenant } from '../db/pool';
+
+// Valid prior statuses for each target status a contractor invoice can be
+// set to — e.g. 'paid' can only be reached from 'issued' (not resurrected
+// from 'void', not re-marked once already 'paid'), and once 'paid' or
+// 'void' an invoice is terminal (no path back to 'issued').
+const VALID_PRIOR_STATUSES: Record<'issued' | 'paid' | 'void', Array<'issued' | 'paid' | 'void'>> = {
+  issued: [],
+  paid: ['issued'],
+  void: ['issued'],
+};
 
 @Injectable()
 export class ContractorInvoicesService {
@@ -48,11 +58,18 @@ export class ContractorInvoicesService {
 
   async setStatus(tenantId: string, invoiceId: string, status: 'issued' | 'paid' | 'void') {
     return withTenant(tenantId, async (client) => {
+      const validPrior = VALID_PRIOR_STATUSES[status];
       const { rows } = await client.query(
-        `update contractor_invoices set status = $2 where id = $1 returning *`,
-        [invoiceId, status],
+        `update contractor_invoices set status = $2 where id = $1 and status = any($3::text[]) returning *`,
+        [invoiceId, status, validPrior],
       );
-      if (!rows[0]) throw new BadRequestException('contractor invoice not found');
+      if (!rows[0]) {
+        const { rows: existing } = await client.query(`select status from contractor_invoices where id = $1`, [
+          invoiceId,
+        ]);
+        if (!existing[0]) throw new BadRequestException('contractor invoice not found');
+        throw new ConflictException(`contractor invoice is '${existing[0].status}' and cannot transition to '${status}'`);
+      }
       return rows[0];
     });
   }

@@ -3,6 +3,7 @@ package branchprotection
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"path/filepath"
 
 	"github.com/nexus/git-host/internal/db"
@@ -107,22 +108,31 @@ func IsUserAllowed(ctx context.Context, tenantID, repoName, targetBranch, userID
 	if err != nil {
 		return false, err
 	}
-	return isUserAllowedAmong(entries, targetBranch, userID), nil
+	return isUserAllowedAmong(entries, targetBranch, userID)
 }
 
 // isUserAllowedAmong — pure, exported for unit tests (branchprotection_test.go).
-func isUserAllowedAmong(entries []AllowlistEntry, targetBranch, userID string) bool {
+// A malformed BranchPattern is surfaced as an error rather than silently
+// treated as "doesn't match": given this allowlist's fail-open design (no
+// matching entry => unrestricted), silently skipping a bad pattern would
+// invert an admin's intent and quietly disable the restriction they
+// configured, so callers must fail closed instead.
+func isUserAllowedAmong(entries []AllowlistEntry, targetBranch, userID string) (bool, error) {
 	matching := false
 	for _, e := range entries {
-		if ok, _ := filepath.Match(e.BranchPattern, targetBranch); ok {
+		ok, err := filepath.Match(e.BranchPattern, targetBranch)
+		if err != nil {
+			return false, fmt.Errorf("allowlist entry %q has invalid branch pattern %q: %w", e.ID, e.BranchPattern, err)
+		}
+		if ok {
 			matching = true
 			if e.UserID == userID {
-				return true
+				return true, nil
 			}
 		}
 	}
 	// No entry for any pattern matching this branch at all => unrestricted
 	// (fail-open). At least one matching pattern exists, but this user
 	// isn't in it => blocked.
-	return !matching
+	return !matching, nil
 }

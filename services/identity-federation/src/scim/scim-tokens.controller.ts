@@ -2,6 +2,7 @@ import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
 import { randomBytes, createHash } from 'crypto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { withTenant } from '../db/pool';
+import { verifyTenantSlug } from '../common/verify-tenant-slug';
 
 /** Admin-facing (human, JWT-authenticated) endpoint to mint the bearer token
  *  an IdP's SCIM app will use going forward. The raw token is shown exactly
@@ -11,6 +12,7 @@ import { withTenant } from '../db/pool';
 export class ScimTokensController {
   @Post()
   async create(@Req() req: any, @Body() body: { label?: string; tenantSlug: string }) {
+    await verifyTenantSlug(req.user.tenant_id, body.tenantSlug);
     const rawToken = 'scim_' + randomBytes(32).toString('hex');
     const tokenHash = createHash('sha256').update(rawToken).digest('hex');
 

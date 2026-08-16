@@ -3,7 +3,15 @@ import { withTenant } from '../db/pool';
 import { writeRecording, readRecording } from './storage';
 
 const NOTIFICATIONS_URL = process.env.NOTIFICATIONS_SERVICE_URL ?? 'http://localhost:4014';
-const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET ?? 'dev-only-internal-secret';
+
+// No insecure fallback — a shared secret every deployment defaults to if
+// unconfigured is not a secret. Fail closed at startup rather than
+// silently authenticating internal calls with a string anyone can read
+// out of this repo.
+if (!process.env.INTERNAL_SERVICE_SECRET) {
+  throw new Error('INTERNAL_SERVICE_SECRET must be set');
+}
+const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET;
 
 /**
  * WebRTC video/audio calls (docs/FEATURES.md §11.6) — see

@@ -15,6 +15,18 @@ export function createTenantRateLimitGuard(
   resourceName: string,
   config: TokenBucketConfig,
 ) {
+  // Validated once, here at setup time (this factory runs at module-load
+  // time via `@UseGuards(createTenantRateLimitGuard(...))`), rather than
+  // letting a bad config reach the Lua script on every request — e.g.
+  // `refillPerSecond: 0` divides by zero in the EXPIRE calculation and
+  // would fail every request through this guard.
+  if (!Number.isFinite(config.capacity) || config.capacity <= 0) {
+    throw new Error(`createTenantRateLimitGuard(${resourceName}): capacity must be a positive finite number, got ${config.capacity}`);
+  }
+  if (!Number.isFinite(config.refillPerSecond) || config.refillPerSecond <= 0) {
+    throw new Error(`createTenantRateLimitGuard(${resourceName}): refillPerSecond must be a positive finite number, got ${config.refillPerSecond}`);
+  }
+
   // A closure variable, not a class field: a field on this exported
   // anonymous class would force TypeScript to expose TokenBucketLimiter's
   // shape in the generated .d.ts, which fails declaration emit for an

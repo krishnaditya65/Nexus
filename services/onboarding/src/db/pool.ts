@@ -14,6 +14,13 @@ export const pool = new Pool({
     'postgres://eos_app:eos_app_dev_password@localhost:5432/eos_onboarding',
 });
 
+// Without this listener, an idle-connection drop (DB restart/network blip)
+// surfaces as an uncaught 'error' event on the pool and crashes the whole
+// process — log it instead.
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle client', err);
+});
+
 /**
  * Runs `fn` inside a transaction with `app.tenant_id` set via SET LOCAL,
  * so Postgres RLS enforces isolation even if a query forgets a WHERE clause.

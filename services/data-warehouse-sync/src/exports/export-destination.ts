@@ -19,6 +19,14 @@ export function isUnsupportedWarehouseConnector(destinationType: string): boolea
   return destinationType === 'snowflake' || destinationType === 'bigquery';
 }
 
+/** The only `destinationType` with a real (local-disk stand-in) writer.
+ *  Anything that's neither this nor one of the documented-but-unimplemented
+ *  connectors above (e.g. a typo'd destinationType) must be rejected
+ *  explicitly rather than silently falling through to this writer. */
+export function isSupportedLocalDiskConnector(destinationType: string): boolean {
+  return destinationType === 's3_parquet';
+}
+
 /** Deterministic filename for a tenant's export run — pulled out so the
  *  `Date.now()` call happens once, at the actual call site, and this
  *  function itself stays pure and testable with an injected timestamp. */

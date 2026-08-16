@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { withTenant } from '../db/pool';
 
 /**
@@ -65,7 +65,17 @@ export class ChannelsService {
     });
   }
 
-  async addMember(tenantId: string, channelId: string, userId: string) {
+  /** `requestingUserId` must already be a member of the channel — this
+   *  schema has no channel-admin concept (channel_members carries no role
+   *  column, see 001_init.sql), so "already in the channel" is the only
+   *  permission this codebase has to check, same bar isMember()-gated
+   *  methods elsewhere in this file (post/history/etc. in
+   *  MessagesService) apply. Without this, any authenticated user could
+   *  add anyone to any channel, private ones included. */
+  async addMember(tenantId: string, channelId: string, userId: string, requestingUserId: string) {
+    const requesterIsMember = await this.isMember(tenantId, channelId, requestingUserId);
+    if (!requesterIsMember) throw new ForbiddenException('not a member of this channel');
+
     return withTenant(tenantId, async (client) => {
       await client.query(
         `insert into channel_members (channel_id, tenant_id, user_id) values ($1, $2, $3)

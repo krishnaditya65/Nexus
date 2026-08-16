@@ -33,7 +33,11 @@ export function CallPanel({ callId, onClose }: { callId: string; onClose: () => 
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'done'>('idle');
 
   async function handleStopRecordingAndUpload() {
-    call.stopRecording();
+    try {
+      await call.stopRecording();
+    } catch {
+      setUploadStatus('idle');
+    }
   }
 
   useEffect(() => {
@@ -47,6 +51,7 @@ export function CallPanel({ callId, onClose }: { callId: string; onClose: () => 
         { onSuccess: () => setUploadStatus('done'), onError: () => setUploadStatus('idle') },
       );
     };
+    reader.onerror = () => setUploadStatus('idle');
     reader.readAsDataURL(call.recordedBlob);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [call.recordedBlob]);

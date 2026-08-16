@@ -20,8 +20,13 @@ export class CallsController {
   async downloadRecording(@Req() req: any, @Param('recordingId') recordingId: string, @Res() res: Response) {
     const result = await this.calls.downloadRecording(req.user.tenant_id, recordingId);
     if (!result) throw new NotFoundException('Recording not found');
+    // Defense in depth on top of storage.ts's write-time sanitization —
+    // a filename is about to go verbatim into a response header, so strip
+    // anything that could break out of the quoted value (a literal `"`)
+    // or inject additional headers (CR/LF) before it's interpolated.
+    const safeFilename = result.filename.replace(/["\r\n]/g, '');
     res.setHeader('content-type', 'video/webm');
-    res.setHeader('content-disposition', `attachment; filename="${result.filename}"`);
+    res.setHeader('content-disposition', `attachment; filename="${safeFilename}"`);
     res.send(result.data);
   }
 

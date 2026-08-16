@@ -47,5 +47,9 @@ import { DevicesService } from '../devices/devices.service';
   ],
   providers: [AuthService, JwtStrategy, GeoIpService, DevicesService],
   controllers: [AuthController],
+  // FederationInternalController mints tokens through this same
+  // AuthService.issueToken so SSO/SCIM-provisioned logins carry the exact
+  // same sid/is_guest/permissions claims as a normal login.
+  exports: [AuthService],
 })
 export class AuthModule {}

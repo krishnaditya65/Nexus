@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { withTenant } from '../db/pool';
 
 const AUTO_STATUS_ON_UPDATE_KEYWORDS: Record<string, string> = {
@@ -75,7 +75,10 @@ export class IncidentsService {
 
       const lowerMessage = message.toLowerCase();
       for (const [keyword, status] of Object.entries(AUTO_STATUS_ON_UPDATE_KEYWORDS)) {
-        if (lowerMessage.includes(keyword)) {
+        // Word-boundary match, not a plain substring check — `.includes()`
+        // false-positives on phrases like "still not resolved" (contains
+        // "resolved") and would wrongly auto-close the incident.
+        if (new RegExp(`\\b${keyword}\\b`, 'i').test(lowerMessage)) {
           await client.query(
             `update incidents set status = $2, resolved_at = case when $2 = 'resolved' then now() else resolved_at end
              where id = $1`,
@@ -95,13 +98,15 @@ export class IncidentsService {
         `update incidents set status = 'resolved', resolved_at = now() where id = $1 returning *`,
         [incidentId],
       );
-      return rows[0] ?? null;
+      if (!rows[0]) throw new NotFoundException('Incident not found');
+      return rows[0];
     });
   }
 
   async get(tenantId: string, incidentId: string) {
     return withTenant(tenantId, async (client) => {
       const incidentRes = await client.query(`select * from incidents where id = $1`, [incidentId]);
+      if (!incidentRes.rows[0]) throw new NotFoundException('Incident not found');
       const updatesRes = await client.query(
         `select * from incident_updates where incident_id = $1 order by posted_at`,
         [incidentId],

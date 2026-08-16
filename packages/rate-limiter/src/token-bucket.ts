@@ -63,6 +63,9 @@ export class TokenBucketLimiter {
    *   resource (e.g. API calls vs. CI runner starts).
    */
   async consume(bucketKey: string, config: TokenBucketConfig, requested = 1): Promise<TokenBucketResult> {
+    if (!Number.isFinite(requested) || requested < 0) {
+      throw new Error(`TokenBucketLimiter.consume: requested must be a non-negative finite number, got ${requested}`);
+    }
     const nowSeconds = Date.now() / 1000;
     const result = (await this.redis.eval(
       TOKEN_BUCKET_LUA,

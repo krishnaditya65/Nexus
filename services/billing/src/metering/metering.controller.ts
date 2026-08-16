@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -14,7 +14,11 @@ export class MeteringController {
   // admin-only action — see services/cicd/src/runs/runner.service.ts.
   @Post('usage-events')
   record(@Req() req: any, @Body() body: { metric: string; quantity: number; sourceService: string }) {
-    return this.metering.recordUsage(req.user.tenant_id, body.metric, body.quantity, body.sourceService);
+    const quantity = Number(body.quantity);
+    if (!Number.isFinite(quantity)) {
+      throw new BadRequestException('quantity must be a finite number');
+    }
+    return this.metering.recordUsage(req.user.tenant_id, body.metric, quantity, body.sourceService);
   }
 
   @Get('usage-events/summary')
@@ -28,7 +32,11 @@ export class MeteringController {
   @Roles('owner', 'admin')
   @Post('entitlements')
   setEntitlement(@Req() req: any, @Body() body: { featureKey: string; limitValue: number }) {
-    return this.metering.setEntitlement(req.user.tenant_id, body.featureKey, body.limitValue);
+    const limitValue = Number(body.limitValue);
+    if (!Number.isFinite(limitValue)) {
+      throw new BadRequestException('limitValue must be a finite number');
+    }
+    return this.metering.setEntitlement(req.user.tenant_id, body.featureKey, limitValue);
   }
 
   @Get('entitlements')
@@ -38,6 +46,10 @@ export class MeteringController {
 
   @Get('entitlements/check')
   check(@Req() req: any, @Query('featureKey') featureKey: string, @Query('quantity') quantity?: string) {
-    return this.metering.checkEntitlement(req.user.tenant_id, featureKey, quantity ? Number(quantity) : 1);
+    const parsedQuantity = quantity ? Number(quantity) : 1;
+    if (!Number.isFinite(parsedQuantity)) {
+      throw new BadRequestException('quantity must be a finite number');
+    }
+    return this.metering.checkEntitlement(req.user.tenant_id, featureKey, parsedQuantity);
   }
 }

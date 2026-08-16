@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { MessagesService } from './messages.service';
 
@@ -34,7 +34,12 @@ export class MessagesController {
 
   @Get()
   history(@Req() req: any, @Param('channelId') channelId: string, @Query('limit') limit?: string) {
-    return this.messages.history(req.user.tenant_id, channelId, req.user.sub, limit ? Number(limit) : undefined);
+    let parsedLimit: number | undefined;
+    if (limit !== undefined) {
+      parsedLimit = Number(limit);
+      if (!Number.isFinite(parsedLimit)) throw new BadRequestException('limit must be a number');
+    }
+    return this.messages.history(req.user.tenant_id, channelId, req.user.sub, parsedLimit);
   }
 
   @Get(':messageId/thread')

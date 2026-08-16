@@ -22,7 +22,7 @@ interface PmTicket {
 export class RtmService {
   async generate(tenantId: string, projectId: string, authorizationHeader: string) {
     const pmServiceUrl = process.env.PM_SERVICE_URL ?? 'http://localhost:4002';
-    const res = await fetch(`${pmServiceUrl}/tickets?projectId=${projectId}`, {
+    const res = await fetch(`${pmServiceUrl}/tickets?projectId=${encodeURIComponent(projectId)}`, {
       headers: { authorization: authorizationHeader },
     });
     if (!res.ok) throw new Error(`failed to fetch tickets from pm-service: ${res.status}`);

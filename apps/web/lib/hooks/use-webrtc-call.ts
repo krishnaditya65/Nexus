@@ -171,14 +171,18 @@ export function useWebrtcCall(callId: string | null) {
   }, []);
 
   const startScreenShare = useCallback(async () => {
-    const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-    const screenTrack = screenStream.getVideoTracks()[0];
-    peerConnections.current.forEach((pc) => {
-      const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
-      sender?.replaceTrack(screenTrack);
-    });
-    screenTrack.onended = () => stopScreenShare();
-    setIsScreenSharing(true);
+    try {
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const screenTrack = screenStream.getVideoTracks()[0];
+      peerConnections.current.forEach((pc) => {
+        const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
+        sender?.replaceTrack(screenTrack);
+      });
+      screenTrack.onended = () => stopScreenShare();
+      setIsScreenSharing(true);
+    } catch (err: any) {
+      setError(err.message ?? 'Could not start screen share');
+    }
   }, []);
 
   const stopScreenShare = useCallback(() => {

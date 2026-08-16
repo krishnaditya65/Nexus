@@ -49,8 +49,9 @@ export class BoardsService {
             `select t.*, ws.name as state_name
              from tickets t join workflow_states ws on ws.id = t.state_id
              where t.sprint_id = $1
+               and exists (select 1 from sprints s where s.id = $1 and s.project_id = $2)
              order by t.backlog_rank nulls last, t.ticket_number`,
-            [sprintId],
+            [sprintId, projectId],
           )
         : await client.query(
             `select t.*, ws.name as state_name

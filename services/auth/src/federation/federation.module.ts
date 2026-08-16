@@ -14,28 +14,21 @@
 // reusing the same RS256 keypair every other issuer/verifier already
 // agrees on.
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
 import { FederationInternalController } from './federation-internal.controller';
 import { TenantsModule } from '../tenants/tenants.module';
 import { UsersModule } from '../users/users.module';
-import { KeysModule } from '../keys/keys.module';
-import { KeyManagementService } from '../keys/key-management.service';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
-    KeysModule,
-    JwtModule.registerAsync({
-      imports: [KeysModule],
-      inject: [KeyManagementService],
-      useFactory: (keys: KeyManagementService) => ({
-        privateKey: keys.getPrivateKeyPem(),
-        publicKey: keys.getPublicKeyPem(),
-        signOptions: { algorithm: 'RS256', expiresIn: '1h', keyid: keys.getKeyId() },
-        verifyOptions: { algorithms: ['RS256'] },
-      }),
-    }),
     TenantsModule,
     UsersModule,
+    // Gives this controller AuthService.issueToken directly, so
+    // upsert-user's token carries the same sid/is_guest/permissions claims
+    // as a normal login instead of a separately hand-rolled jwt.sign() call
+    // (that used to also mean a second, independent JwtModule/RS256 keypair
+    // wiring here — see git history — now unnecessary).
+    AuthModule,
   ],
   controllers: [FederationInternalController],
 })

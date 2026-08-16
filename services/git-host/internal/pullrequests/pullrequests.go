@@ -173,6 +173,9 @@ func Merge(ctx context.Context, tenantID, repoName, prID, strategy, callerUserID
 	if err != nil {
 		return nil, err
 	}
+	if pr.RepoName != repoName {
+		return nil, fmt.Errorf("PR not found in repo %q", repoName)
+	}
 	if pr.Status != "open" {
 		return &MergeResult{Merged: false, Reason: fmt.Sprintf("PR is already %s", pr.Status)}, nil
 	}
@@ -180,7 +183,7 @@ func Merge(ctx context.Context, tenantID, repoName, prID, strategy, callerUserID
 		return &MergeResult{Merged: false, Reason: "PR is still a draft — mark it ready for review first"}, nil
 	}
 
-	allowed, err := branchprotection.IsUserAllowed(ctx, tenantID, repoName, pr.TargetBranch, callerUserID)
+	allowed, err := branchprotection.IsUserAllowed(ctx, tenantID, pr.RepoName, pr.TargetBranch, callerUserID)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +191,7 @@ func Merge(ctx context.Context, tenantID, repoName, prID, strategy, callerUserID
 		return &MergeResult{Merged: false, Reason: "you are not on the merge allowlist for this branch"}, nil
 	}
 
-	rule, err := branchprotection.FindApplicable(ctx, tenantID, repoName, pr.TargetBranch)
+	rule, err := branchprotection.FindApplicable(ctx, tenantID, pr.RepoName, pr.TargetBranch)
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +216,7 @@ func Merge(ctx context.Context, tenantID, repoName, prID, strategy, callerUserID
 		_ = rule.RequireCodeownerReview
 	}
 
-	repoPath, err := repos.Path(tenantID, repoName)
+	repoPath, err := repos.Path(tenantID, pr.RepoName)
 	if err != nil {
 		return nil, err
 	}

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { withTenant } from '../db/pool';
 import { JobBrokerService } from './job-broker.service';
@@ -101,9 +101,16 @@ export class RunnersService {
    *  concurrently never both claim the same job. Returns null (not an
    *  error) when there's simply nothing to do, since "no work right now"
    *  is the overwhelmingly common poll response, not a failure. */
-  async claimNextJob(tenantId: string, runnerId: string, labels: string[]) {
-    if (labels.length === 0) return null;
+  async claimNextJob(tenantId: string, runnerId: string, requestedLabels: string[]) {
+    if (requestedLabels.length === 0) return null;
     const job = await withTenant(tenantId, async (client) => {
+      // Never trust the caller-supplied labels on their own — a runner may
+      // only claim within labels it's actually registered with, so
+      // intersect the query with the runner's own `labels` column.
+      const { rows: runnerRows } = await client.query(`select labels from runners where id = $1`, [runnerId]);
+      const registeredLabels: string[] = runnerRows[0]?.labels ?? [];
+      const labels = requestedLabels.filter((label) => registeredLabels.includes(label));
+      if (labels.length === 0) return null;
       const { rows } = await client.query(
         `update runner_jobs set status = 'claimed', claimed_by_runner_id = $2, claimed_at = now()
          where id = (
@@ -125,17 +132,26 @@ export class RunnersService {
     return { ...job, authorizationHeader };
   }
 
-  async completeJob(tenantId: string, jobId: string, status: 'succeeded' | 'failed', log: string, exitCode: number) {
+  async completeJob(
+    tenantId: string,
+    runnerId: string,
+    jobId: string,
+    status: 'succeeded' | 'failed',
+    log: string,
+    exitCode: number,
+  ) {
     const job = await withTenant(tenantId, async (client) => {
       const { rows } = await client.query(
         `update runner_jobs set status = $2, log = $3, exit_code = $4, completed_at = now()
-         where id = $1 and status = 'claimed' returning id`,
-        [jobId, status, log, exitCode],
+         where id = $1 and status = 'claimed' and claimed_by_runner_id = $5 returning id`,
+        [jobId, status, log, exitCode, runnerId],
       );
       return rows[0];
     });
     if (!job) {
-      throw new BadRequestException('no claimed job with this id — it may already be completed or was never claimed');
+      throw new ForbiddenException(
+        'no job with this id claimed by this runner — it may already be completed, claimed by another runner, or was never claimed',
+      );
     }
     // Wakes up RunnerService.execute(), which is blocked in JobBrokerService
     // waiting on exactly this id — see runner.service.ts's runsOn branch.

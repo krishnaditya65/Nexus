@@ -10,7 +10,11 @@ export class RetentionInternalController {
   constructor(private readonly messages: MessagesService) {}
 
   private assertTrustedCaller(secretHeader: string | undefined) {
-    const expected = process.env.INTERNAL_SERVICE_SECRET ?? 'dev-only-internal-secret';
+    // No insecure fallback: a mass-deletion endpoint like this one must
+    // fail closed, not silently trust a hardcoded string every deployment
+    // shares if the operator forgets to configure a real secret.
+    const expected = process.env.INTERNAL_SERVICE_SECRET;
+    if (!expected) throw new ForbiddenException('INTERNAL_SERVICE_SECRET is not configured');
     if (secretHeader !== expected) throw new ForbiddenException('untrusted caller');
   }
 

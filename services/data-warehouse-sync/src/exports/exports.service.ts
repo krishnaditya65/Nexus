@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { withTenant } from '../db/pool';
-import { isUnsupportedWarehouseConnector, buildExportFileName } from './export-destination';
+import { isUnsupportedWarehouseConnector, isSupportedLocalDiskConnector, buildExportFileName } from './export-destination';
 
 /**
  * Reverse-ETL: pulls this tenant's data from the owning services and lands
@@ -105,6 +105,12 @@ export class ExportsService {
         `${destination.destination_type} connector not implemented in this build — ` +
           'swap this branch for the vendor SDK/driver call; extraction and run tracking above are unaffected.',
       );
+    }
+    if (!isSupportedLocalDiskConnector(destination.destination_type)) {
+      // An unrecognized destinationType (e.g. a typo) must fail loudly —
+      // it must never silently fall through to the s3_parquet local-disk
+      // writer below and get reported as 'completed'.
+      throw new Error(`unrecognized destinationType '${destination.destination_type}' — export cannot be written`);
     }
     const dir = process.env.WAREHOUSE_EXPORT_DIR ?? '/tmp/nexus-warehouse-exports';
     mkdirSync(dir, { recursive: true });

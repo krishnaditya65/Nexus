@@ -42,7 +42,7 @@ function BurndownSparkline({ sprintId }: { sprintId: string }) {
   const { data, isLoading, error } = useBurndown(sprintId);
   if (isLoading) return <p className="text-xs text-text-secondary">{tCommon('loading')}</p>;
   if (error) return <p className="text-xs text-danger">{error.message}</p>;
-  if (!data) return null;
+  if (!data || data.series.length === 0) return <p className="text-xs text-text-secondary">{tCommon('none')}</p>;
 
   const width = 240;
   const height = 80;

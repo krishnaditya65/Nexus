@@ -10,21 +10,34 @@ import { createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from '
  * before hitting a row.
  *
  * `resolveMasterKey` reads a 32-byte key from `EOS_KMS_MASTER_KEY` (hex-
- * encoded, 64 chars). Same "dev-only-X, disclosed" fallback convention
- * already used everywhere in this codebase (`INTERNAL_SERVICE_SECRET`'s
- * `'dev-only-internal-secret'` default) — a fixed, obviously-not-secret
- * dev key when the env var is unset, so local dev never breaks, logged
+ * encoded, 64 chars). Unlike this codebase's `INTERNAL_SERVICE_SECRET`
+ * convention (a disclosed `'dev-only-internal-secret'` default used
+ * unconditionally), a KMS master key protects data at rest, so an
+ * unconfigured/ambiguous environment must fail closed: the dev-only key
+ * is only ever used when the caller explicitly opts in via
+ * `EOS_KMS_ALLOW_DEV_KEY=true` (there is no NODE_ENV convention
+ * elsewhere in this repo to key off instead), and even then it's logged
  * once so it's never mistaken for a real deployment's key.
  */
 const DEV_ONLY_MASTER_KEY_HEX = '0'.repeat(63) + '1'; // 32 bytes of near-zero — deliberately, unmistakably not a real key
 let warnedAboutDevKey = false;
 
 export function resolveMasterKey(envValue: string | undefined): Buffer {
-  const hex = envValue ?? DEV_ONLY_MASTER_KEY_HEX;
-  if (!envValue && !warnedAboutDevKey) {
-    // eslint-disable-next-line no-console
-    console.warn('[@nexus/kms] EOS_KMS_MASTER_KEY is not set — using a fixed, publicly-known dev-only key. Set a real 32-byte hex key in production.');
-    warnedAboutDevKey = true;
+  let hex = envValue;
+  if (!hex) {
+    if (process.env.EOS_KMS_ALLOW_DEV_KEY !== 'true') {
+      throw new Error(
+        '[@nexus/kms] EOS_KMS_MASTER_KEY is not set. Refusing to start with no master key configured. ' +
+          'Set a real 32-byte hex key, or set EOS_KMS_ALLOW_DEV_KEY=true to explicitly opt into the ' +
+          'publicly-known dev-only key for local development/tests.',
+      );
+    }
+    if (!warnedAboutDevKey) {
+      // eslint-disable-next-line no-console
+      console.warn('[@nexus/kms] EOS_KMS_MASTER_KEY is not set — using a fixed, publicly-known dev-only key because EOS_KMS_ALLOW_DEV_KEY=true. Never set this outside local dev/test.');
+      warnedAboutDevKey = true;
+    }
+    hex = DEV_ONLY_MASTER_KEY_HEX;
   }
   if (!/^[0-9a-f]{64}$/i.test(hex)) {
     throw new Error('EOS_KMS_MASTER_KEY must be a 64-character hex string (32 bytes) for AES-256');
